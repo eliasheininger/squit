@@ -14,7 +14,7 @@ from datetime import datetime
 
 import config
 from tracker import AppTracker
-from utils import close_app, format_duration, get_all_running_apps, get_frontmost_app
+from utils import close_app, format_duration, get_all_running_apps, get_frontmost_app, show_dialog
 
 
 def log(msg: str) -> None:
@@ -44,6 +44,9 @@ def print_snapshot(tracker: AppTracker, threshold: float) -> None:
         duration_str = format_duration(inactive_secs)
         if app_name in config.WHITELIST:
             status = "whitelisted"
+        elif tracker.is_snoozed(app_name):
+            until = datetime.fromtimestamp(tracker.snoozed_until[app_name]).strftime("%H:%M")
+            status = f"snoozed until {until}"
         elif inactive_secs > threshold:
             status = "*** WOULD CLOSE ***"
         else:
@@ -52,37 +55,48 @@ def print_snapshot(tracker: AppTracker, threshold: float) -> None:
     print()
 
 
-def run_check(tracker: AppTracker, dry_run: bool, threshold: float) -> None:
-    """Full check: print snapshot and close inactive apps if enabled.
+def run_check(tracker: AppTracker, dry_run: bool, threshold: float, snooze_duration: float) -> None:
+    """Full check: print snapshot, show dialogs, and close/snooze inactive apps.
 
     Frontmost app sampling happens in the main loop — this only handles
-    the snapshot display and close logic.
+    the snapshot display and dialog/close logic.
     """
-    # Print snapshot of all tracked apps
     log(f"Tracked apps ({len(tracker.last_seen)}):")
     print_snapshot(tracker, threshold)
 
-    # 4. Find apps that have been inactive longer than the threshold
     inactive = tracker.get_inactive(threshold)
     flagged = [(n, d) for n, d in inactive if n not in config.WHITELIST]
     if not flagged:
-        log("No apps to close.")
+        log("No apps to action.")
         return
 
     for app_name, duration in flagged:
+        # Skip apps the user already chose to keep open recently
+        if tracker.is_snoozed(app_name):
+            until = datetime.fromtimestamp(tracker.snoozed_until[app_name]).strftime("%H:%M")
+            log(f"  Skipping '{app_name}' — snoozed until {until}")
+            continue
+
         duration_str = format_duration(duration)
 
         if dry_run:
-            log(f"[DRY RUN] Would close '{app_name}' (inactive for {duration_str})")
-        else:
-            log(f"Closing '{app_name}' (inactive for {duration_str})...")
+            log(f"[DRY RUN] '{app_name}' inactive for {duration_str} — would show dialog")
+            continue
+
+        log(f"Showing dialog for '{app_name}' (inactive for {duration_str})...")
+        choice = show_dialog(app_name, duration_str)
+
+        if choice == "Close":
+            log(f"  -> User chose Close — quitting '{app_name}'")
             success = close_app(app_name)
             if success:
-                log(f"  -> Quit signal sent to '{app_name}'")
-                # Remove from tracker so it doesn't get targeted again immediately
                 tracker.last_seen.pop(app_name, None)
             else:
-                log(f"  -> Failed to quit '{app_name}' (app may not support AppleScript quit)")
+                log(f"  -> Failed to quit '{app_name}' (may not support AppleScript quit)")
+        else:
+            until_str = datetime.fromtimestamp(time.time() + snooze_duration).strftime("%H:%M")
+            log(f"  -> User chose Keep Open — snoozed until {until_str}")
+            tracker.snooze(app_name, snooze_duration)
 
 
 def main():
@@ -106,16 +120,24 @@ def main():
         default=config.CHECK_INTERVAL,
         help=f"Check interval in seconds (default: {config.CHECK_INTERVAL})",
     )
+    parser.add_argument(
+        "--snooze",
+        type=int,
+        default=config.SNOOZE_DURATION,
+        help=f"Snooze duration in seconds after 'Keep Open' (default: {config.SNOOZE_DURATION})",
+    )
     args = parser.parse_args()
 
     dry_run = not args.close
     threshold = args.threshold
     interval = args.interval
+    snooze_duration = args.snooze
 
-    mode = "DRY RUN" if dry_run else "LIVE (will close apps)"
+    mode = "DRY RUN" if dry_run else "LIVE (dialog before closing)"
     print(f"\nsquit starting in {mode} mode")
     print(f"  Inactivity threshold : {format_duration(threshold)}")
     print(f"  Check interval       : {format_duration(interval)}")
+    print(f"  Snooze duration      : {format_duration(snooze_duration)}")
     print(f"  Whitelist            : {config.WHITELIST or 'none'}")
     print(f"  Press Ctrl+C to stop\n")
 
@@ -143,7 +165,7 @@ def main():
         # Full snapshot + close check only on the longer interval
         if time.time() - last_check >= interval:
             print()
-            run_check(tracker, dry_run=dry_run, threshold=threshold)
+            run_check(tracker, dry_run=dry_run, threshold=threshold, snooze_duration=snooze_duration)
             log(f"Next check in {format_duration(interval)}...")
             last_check = time.time()
 

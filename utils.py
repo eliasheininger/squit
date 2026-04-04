@@ -62,6 +62,24 @@ def _is_user_app(name: str) -> bool:
     return True
 
 
+def show_dialog(app_name: str, duration_str: str) -> str:
+    """Show a macOS confirmation dialog for an inactive app.
+
+    Returns "Close" or "Keep Open" based on what the user clicks.
+    Falls back to "Keep Open" (safe default) if the dialog fails or is dismissed.
+    """
+    msg = f"{app_name} has been inactive for {duration_str}. Close it?"
+    script = (
+        f'tell application "System Events" to display dialog "{msg}" '
+        f'buttons {{"Keep Open", "Close"}} default button "Keep Open" with icon caution'
+    )
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    if result.returncode != 0:
+        return "Keep Open"
+    # osascript stdout: "button returned:Close\n"
+    return "Close" if "Close" in result.stdout else "Keep Open"
+
+
 def close_app(app_name: str) -> bool:
     """Gracefully quit an application by name using AppleScript.
 

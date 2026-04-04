@@ -11,6 +11,7 @@ class AppTracker:
     def __init__(self):
         self.last_seen: dict[str, float] = {}
         self.started_at: float = time.time()  # when tracking began
+        self.snoozed_until: dict[str, float] = {}  # app -> unix timestamp of snooze expiry
 
     def update(self, app_name: str) -> None:
         """Mark an app as active right now."""
@@ -27,6 +28,15 @@ class AppTracker:
         for name in app_names:
             if name not in self.last_seen:
                 self.last_seen[name] = now
+
+    def snooze(self, app_name: str, duration: float) -> None:
+        """Snooze an app so it won't be prompted again for `duration` seconds."""
+        self.snoozed_until[app_name] = time.time() + duration
+
+    def is_snoozed(self, app_name: str) -> bool:
+        """Return True if this app is currently snoozed."""
+        until = self.snoozed_until.get(app_name)
+        return until is not None and time.time() < until
 
     def get_inactive(self, threshold: float) -> list[tuple[str, float]]:
         """Return apps that haven't been active for longer than threshold seconds.
