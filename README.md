@@ -1,4 +1,4 @@
-# focus-cleaner
+# squit
 
 A minimal macOS CLI tool that tracks which apps you've been using and closes ones that have been inactive (not frontmost) for too long.
 
@@ -15,7 +15,7 @@ A minimal macOS CLI tool that tracks which apps you've been using and closes one
 
 ## macOS Permissions (required)
 
-focus-cleaner uses AppleScript via `osascript` to detect the active app and close inactive ones. macOS requires explicit permission for this.
+squit uses AppleScript via `osascript` to detect the active app and close inactive ones. macOS requires explicit permission for this.
 
 ### 1. Accessibility (required to detect frontmost app)
 
@@ -61,7 +61,7 @@ python3 main.py --close --threshold 3600 --interval 60
 ### Sample output
 
 ```
-focus-cleaner starting in DRY RUN mode
+squit starting in DRY RUN mode
   Inactivity threshold : 6h 0m
   Check interval       : 5m
   Whitelist            : ['Finder', 'SystemUIServer', 'Dock', 'loginwindow']
@@ -97,7 +97,7 @@ Add any app name to `WHITELIST` to protect it from ever being closed (use the ex
 
 ## How It Works
 
-1. Every `CHECK_INTERVAL` seconds, focus-cleaner calls `osascript` to find the frontmost app
+1. Every `CHECK_INTERVAL` seconds, squit calls `osascript` to find the frontmost app
 2. It records a timestamp for that app (`tracker.py`)
 3. It also seeds any newly opened apps with the current time
 4. Any app not seen as frontmost for longer than `INACTIVITY_THRESHOLD` is flagged
@@ -124,13 +124,13 @@ windowcleaner/
 |---|---|
 | Whitelist from CLI | `--whitelist "Slack,Notion"` arg in `main.py` |
 | Menu bar app | Wrap with [`rumps`](https://github.com/jaredks/rumps): `pip install rumps` |
-| Background daemon | Add `~/Library/LaunchAgents/com.focus-cleaner.plist` |
+| Background daemon | Add `~/Library/LaunchAgents/com.squit.plist` |
 | Persist state across restarts | Save `tracker.last_seen` to JSON on disk |
 | Notifications | Use `osascript` to send macOS notifications before closing |
 
 ### launchd daemon (run on login, background)
 
-Create `~/Library/LaunchAgents/com.focus-cleaner.plist`:
+Create `~/Library/LaunchAgents/com.squit.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -138,7 +138,7 @@ Create `~/Library/LaunchAgents/com.focus-cleaner.plist`:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.focus-cleaner</string>
+    <string>com.squit</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
@@ -148,14 +148,14 @@ Create `~/Library/LaunchAgents/com.focus-cleaner.plist`:
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/focus-cleaner.log</string>
+    <string>/tmp/squit.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/focus-cleaner.err</string>
+    <string>/tmp/squit.err</string>
 </dict>
 </plist>
 ```
 
 Then load it:
 ```bash
-launchctl load ~/Library/LaunchAgents/com.focus-cleaner.plist
+launchctl load ~/Library/LaunchAgents/com.squit.plist
 ```

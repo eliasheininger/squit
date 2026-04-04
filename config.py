@@ -1,4 +1,4 @@
-# Configuration for focus-cleaner
+# Configuration for squit
 # Edit these values to customize behavior
 
 # How long an app must be inactive before it's considered stale (seconds)

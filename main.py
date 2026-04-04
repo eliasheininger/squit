@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""focus-cleaner: close apps that haven't been active for too long.
+"""squit: close apps that haven't been active for too long.
 
 Usage:
     python3 main.py            # dry-run (safe, just logs what would be closed)
@@ -113,7 +113,7 @@ def main():
     interval = args.interval
 
     mode = "DRY RUN" if dry_run else "LIVE (will close apps)"
-    print(f"\nfocus-cleaner starting in {mode} mode")
+    print(f"\nsquit starting in {mode} mode")
     print(f"  Inactivity threshold : {format_duration(threshold)}")
     print(f"  Check interval       : {format_duration(interval)}")
     print(f"  Whitelist            : {config.WHITELIST or 'none'}")
@@ -152,4 +152,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nfocus-cleaner stopped.")
+        print("\nsquit stopped.")
