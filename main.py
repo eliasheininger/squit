@@ -70,8 +70,9 @@ def run_check(tracker: AppTracker, dry_run: bool, threshold: float, snooze_durat
         log("No apps to action.")
         return
 
+    # Show at most one dialog per check cycle — the most inactive non-snoozed app.
+    # Remaining flagged apps will be picked up in the next cycle.
     for app_name, duration in flagged:
-        # Skip apps the user already chose to keep open recently
         if tracker.is_snoozed(app_name):
             until = datetime.fromtimestamp(tracker.snoozed_until[app_name]).strftime("%H:%M")
             log(f"  Skipping '{app_name}' — snoozed until {until}")
@@ -90,13 +91,17 @@ def run_check(tracker: AppTracker, dry_run: bool, threshold: float, snooze_durat
             log(f"  -> User chose Close — quitting '{app_name}'")
             success = close_app(app_name)
             if success:
+                log(f"  -> '{app_name}' quit successfully")
                 tracker.last_seen.pop(app_name, None)
             else:
-                log(f"  -> Failed to quit '{app_name}' (may not support AppleScript quit)")
+                log(f"  -> Failed to quit '{app_name}'")
         else:
             until_str = datetime.fromtimestamp(time.time() + snooze_duration).strftime("%H:%M")
             log(f"  -> User chose Keep Open — snoozed until {until_str}")
             tracker.snooze(app_name, snooze_duration)
+
+        # One dialog per cycle — stop here, handle remaining apps next check
+        break
 
 
 def main():

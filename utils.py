@@ -1,3 +1,5 @@
+import os
+import plistlib
 import subprocess
 
 
@@ -62,6 +64,38 @@ def _is_user_app(name: str) -> bool:
     return True
 
 
+def get_app_icon_path(app_name: str) -> str | None:
+    """Return the .icns file path for an app, or None if not found.
+
+    Looks up the app bundle path via osascript, then reads Info.plist
+    to find the icon filename.
+    """
+    result = subprocess.run(
+        ["osascript", "-e", f'POSIX path of (path to application "{app_name}")'],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+
+    app_path = result.stdout.strip()
+    plist_path = os.path.join(app_path, "Contents", "Info.plist")
+
+    try:
+        with open(plist_path, "rb") as f:
+            plist = plistlib.load(f)
+        icon_file = plist.get("CFBundleIconFile", "")
+        if not icon_file.endswith(".icns"):
+            icon_file += ".icns"
+        icon_path = os.path.join(app_path, "Contents", "Resources", icon_file)
+        if os.path.exists(icon_path):
+            return icon_path
+    except Exception:
+        pass
+
+    return None
+
+
 def show_dialog(app_name: str, duration_str: str) -> str:
     """Show a macOS confirmation dialog for an inactive app.
 
@@ -69,9 +103,11 @@ def show_dialog(app_name: str, duration_str: str) -> str:
     Falls back to "Keep Open" (safe default) if the dialog fails or is dismissed.
     """
     msg = f"{app_name} has been inactive for {duration_str}. Close it?"
+    icon_path = get_app_icon_path(app_name)
+    icon_clause = f'with icon POSIX file "{icon_path}"' if icon_path else "with icon note"
     script = (
         f'tell application "System Events" to display dialog "{msg}" '
-        f'buttons {{"Keep Open", "Close"}} default button "Keep Open" with icon caution'
+        f'with title "squit" buttons {{"Keep Open", "Close"}} default button "Keep Open" {icon_clause}'
     )
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     if result.returncode != 0:
@@ -81,18 +117,24 @@ def show_dialog(app_name: str, duration_str: str) -> str:
 
 
 def close_app(app_name: str) -> bool:
-    """Gracefully quit an application by name using AppleScript.
+    """Quit an application, bypassing any save dialogs.
 
-    Returns True if the quit command was sent successfully, False otherwise.
-    Note: this sends the quit signal; the app may prompt to save unsaved work.
+    Uses 'quit saving no' to skip unsaved-document prompts that would
+    otherwise block the quit silently. Falls back to pkill if AppleScript fails.
+    Returns True if the app was successfully terminated.
     """
-    script = f'tell application "{app_name}" to quit'
+    # 'quit saving no' bypasses "Do you want to save?" dialogs
+    script = f'tell application "{app_name}" to quit saving no'
     result = subprocess.run(
         ["osascript", "-e", script],
         capture_output=True,
         text=True,
     )
-    return result.returncode == 0
+    if result.returncode == 0:
+        return True
+    # Fallback: pkill matches the exact process name
+    fallback = subprocess.run(["pkill", "-x", app_name], capture_output=True)
+    return fallback.returncode == 0
 
 
 def format_duration(seconds: float) -> str:
